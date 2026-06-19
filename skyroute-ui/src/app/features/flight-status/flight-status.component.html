@@ -1,0 +1,128 @@
+<header>
+  <h1>&#9992; SkyRoute</h1>
+  <p>Flight Status Tracker</p>
+</header>
+
+<div class="card">
+  <div class="form-row">
+    <div>
+      <label for="flightNumber">Flight Number</label>
+      <input
+        id="flightNumber"
+        type="text"
+        placeholder="e.g. AA100"
+        maxlength="10"
+        [ngModel]="flightNumber()"
+        (ngModelChange)="flightNumber.set($event)"
+        (keydown.enter)="lookup()"
+      />
+    </div>
+    <div>
+      <label for="date">Date</label>
+      <input
+        id="date"
+        type="date"
+        [ngModel]="date()"
+        (ngModelChange)="date.set($event)"
+        (keydown.enter)="lookup()"
+      />
+    </div>
+  </div>
+
+  <button (click)="lookup()" [disabled]="viewState() === 'loading'">
+    {{ viewState() === 'loading' ? 'Looking up…' : 'Check Status' }}
+  </button>
+
+  @if (viewState() === 'loading') {
+    <div class="loading-row">
+      <span class="spinner"></span> Looking up flight…
+    </div>
+  }
+
+  @if (viewState() === 'error') {
+    <div class="error-box">{{ errorMsg() }}</div>
+  }
+
+  @if (viewState() === 'result' && result(); as r) {
+    <div class="result">
+      <hr class="divider" />
+
+      <div class="status-badge" [ngClass]="r.status">
+        <span class="dot"></span>
+        {{ statusIcons[r.status] }} {{ r.status }}
+      </div>
+
+      <div class="detail-grid">
+        <div class="section-heading full-width">Flight Info</div>
+        <div class="detail-item">
+          <label>Flight</label>
+          <span>{{ r.flightNumber }}</span>
+        </div>
+        <div class="detail-item">
+          <label>Date</label>
+          <span>{{ r.date }}</span>
+        </div>
+
+        <div class="section-heading full-width">Schedule</div>
+        <div class="detail-item">
+          <label>Sched. Departure</label>
+          <span>{{ fmtTime(r.scheduledDeparture) }}</span>
+        </div>
+        <div class="detail-item">
+          <label>Actual Departure</label>
+          <span>{{ fmtTime(r.actualDeparture) }}</span>
+        </div>
+        <div class="detail-item">
+          <label>Sched. Arrival</label>
+          <span>{{ fmtTime(r.scheduledArrival) }}</span>
+        </div>
+        <div class="detail-item">
+          <label>Actual Arrival</label>
+          <span>{{ fmtTime(r.actualArrival) }}</span>
+        </div>
+      </div>
+
+      @if (hasAeroTrackFields()) {
+        <div class="aerotrack-section">
+          <div class="section-heading aerotrack-heading">AeroTrack Details</div>
+          <div class="detail-grid">
+            @if (r.terminal) {
+              <div class="detail-item">
+                <label>Terminal</label>
+                <span>{{ r.terminal }}</span>
+              </div>
+            }
+            @if (r.gate) {
+              <div class="detail-item">
+                <label>Gate</label>
+                <span>{{ r.gate }}</span>
+              </div>
+            }
+            @if (r.delayReason) {
+              <div class="detail-item full-width">
+                <label>Delay Reason</label>
+                <span>{{ r.delayReason }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      @if (r.message) {
+        <div class="message-box">{{ r.message }}</div>
+      }
+
+      <div class="provider-row">
+        <span>Updated {{ fmtUpdated(r.lastUpdatedUtc) }}</span>
+        <span class="provider-badge">{{ r.source }}</span>
+      </div>
+    </div>
+  }
+</div>
+
+<p class="hint">
+  Try:
+  @for (code of sampleFlights; track code) {
+    <code (click)="fillFlight(code)" class="hint-chip">{{ code }}</code>
+  }
+</p>
