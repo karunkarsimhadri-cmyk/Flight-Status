@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Flight Status — Database Design</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --surface2:#243047;
+      --border:  #334155;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --green:   #22c55e;
+      --amber:   #f59e0b;
+      --blue:    #3b82f6;
+      --purple:  #a855f7;
+      --red:     #ef4444;
+      --cyan:    #06b6d4;
+      --orange:  #f97316;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      color: var(--text);
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+    .legend-dot  { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* ── ERD canvas ── */
+    .erd {
+      position: relative;
+      width: 100%;
+      min-height: 900px;
+    }
+
+    svg.lines {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* ── Table card ── */
+    .table-card {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 240px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .table-header {
+      padding: 0.6rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .table-header .icon { font-size: 1rem; }
+
+    .table-body { padding: 0.5rem 0; }
+
+    .col-row {
+      display: grid;
+      grid-template-columns: 20px 1fr auto;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.28rem 0.9rem;
+      font-size: 0.78rem;
+      border-top: 1px solid rgba(255,255,255,0.03);
+    }
+    .col-row:first-child { border-top: none; }
+
+    .key-icon { font-size: 0.65rem; text-align: center; }
+    .col-name { color: var(--text); font-weight: 500; }
+    .col-name.pk { color: var(--amber); }
+    .col-name.fk { color: var(--cyan); }
+    .col-type {
+      font-size: 0.68rem;
+      color: var(--muted);
+      background: rgba(255,255,255,0.06);
+      border-radius: 3px;
+      padding: 0.05rem 0.35rem;
+      white-space: nowrap;
+    }
+    .col-note {
+      grid-column: 2 / -1;
+      font-size: 0.68rem;
+      color: var(--purple);
+      padding-left: 0;
+      margin-top: -0.15rem;
+      padding-bottom: 0.1rem;
+    }
+
+    /* ── Accent colours per table ── */
+    .t-flights    .table-header { background: rgba(59,130,246,.25); color: var(--blue); }
+    .t-airports   .table-header { background: rgba(168,85,247,.2);  color: var(--purple); }
+    .t-airlines   .table-header { background: rgba(168,85,247,.2);  color: var(--purple); }
+    .t-providers  .table-header { background: rgba(6,182,212,.2);   color: var(--cyan); }
+    .t-responses  .table-header { background: rgba(249,115,22,.2);  color: var(--orange); }
+    .t-statuses   .table-header { background: rgba(34,197,94,.2);   color: var(--green); }
+    .t-audit      .table-header { background: rgba(239,68,68,.15);  color: var(--red); }
+
+    /* ── Relationship line styles ── */
+    .rel { stroke-width: 1.5; fill: none; stroke-dasharray: none; }
+    .rel-dashed { stroke-dasharray: 5,3; }
+
+    /* ── Notes section ── */
+    .notes {
+      margin-top: 2rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .note-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+    }
+    .note-card h3 {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.6rem;
+      color: var(--muted);
+    }
+    .note-card ul {
+      list-style: none;
+      font-size: 0.82rem;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .note-card ul li::before { content: '▸ '; color: var(--blue); }
+  </style>
+</head>
+<body>
+
+  <h1>✈ Flight Status — Database Design</h1>
+  <p class="subtitle">Entity–Relationship Diagram · SkyRoute Platform</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> Primary Key (PK)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div> Foreign Key (FK)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Optional / nullable</div>
+    <div class="legend-item" style="gap:.6rem">
+      <svg width="30" height="12"><line x1="0" y1="6" x2="30" y2="6" stroke="#3b82f6" stroke-width="1.5"/></svg> One-to-Many
+    </div>
+    <div class="legend-item" style="gap:.6rem">
+      <svg width="30" height="12"><line x1="0" y1="6" x2="30" y2="6" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5,3"/></svg> Optional ref
+    </div>
+  </div>
+
+  <div class="erd" id="erd">
+
+    <!-- SVG for relationship lines — drawn after cards are positioned -->
+    <svg class="lines" id="lines"></svg>
+
+    <!-- ① flights ──────────────────────────── -->
+    <div class="table-card t-flights" id="t-flights" style="left:340px; top:20px">
+      <div class="table-header"><span class="icon">✈</span> flights</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">flight_id</span><span class="col-type">UUID</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_number</span><span class="col-type">VARCHAR(10)</span></div>
+        <div class="col-row"><span class="key-icon">🔗</span><span class="col-name fk">airline_code</span><span class="col-type">CHAR(2)</span></div>
+        <div class="col-row"><span class="key-icon">🔗</span><span class="col-name fk">origin_iata</span><span class="col-type">CHAR(3)</span></div>
+        <div class="col-row"><span class="key-icon">🔗</span><span class="col-name fk">destination_iata</span><span class="col-type">CHAR(3)</span></div>
+        <div class="col-row"><span></span><span class="col-name">created_at</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- ② airports ─────────────────────────── -->
+    <div class="table-card t-airports" id="t-airports" style="left:20px; top:20px">
+      <div class="table-header"><span class="icon">🏢</span> airports</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">iata_code</span><span class="col-type">CHAR(3)</span></div>
+        <div class="col-row"><span></span><span class="col-name">name</span><span class="col-type">VARCHAR(100)</span></div>
+        <div class="col-row"><span></span><span class="col-name">city</span><span class="col-type">VARCHAR(80)</span></div>
+        <div class="col-row"><span></span><span class="col-name">country</span><span class="col-type">CHAR(2)</span></div>
+        <div class="col-row"><span></span><span class="col-name">timezone</span><span class="col-type">VARCHAR(50)</span></div>
+      </div>
+    </div>
+
+    <!-- ③ airlines ─────────────────────────── -->
+    <div class="table-card t-airlines" id="t-airlines" style="left:20px; top:230px">
+      <div class="table-header"><span class="icon">🏷</span> airlines</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">airline_code</span><span class="col-type">CHAR(2)</span></div>
+        <div class="col-row"><span></span><span class="col-name">name</span><span class="col-type">VARCHAR(80)</span></div>
+        <div class="col-row"><span></span><span class="col-name">country</span><span class="col-type">CHAR(2)</span></div>
+      </div>
+    </div>
+
+    <!-- ④ providers ────────────────────────── -->
+    <div class="table-card t-providers" id="t-providers" style="left:660px; top:20px">
+      <div class="table-header"><span class="icon">📡</span> providers</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">provider_id</span><span class="col-type">SMALLINT</span></div>
+        <div class="col-row"><span></span><span class="col-name">name</span><span class="col-type">VARCHAR(40)</span></div>
+        <div class="col-row"><span></span><span class="col-name">detail_level</span><span class="col-type">ENUM</span></div>
+        <div class="col-note">Full | Minimal</div>
+        <div class="col-row"><span></span><span class="col-name">is_active</span><span class="col-type">BOOL</span></div>
+      </div>
+    </div>
+
+    <!-- ⑤ provider_responses ───────────────── -->
+    <div class="table-card t-responses" id="t-responses" style="left:660px; top:230px">
+      <div class="table-header"><span class="icon">📥</span> provider_responses</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">response_id</span><span class="col-type">UUID</span></div>
+        <div class="col-row"><span class="key-icon">🔗</span><span class="col-name fk">provider_id</span><span class="col-type">SMALLINT</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_number</span><span class="col-type">VARCHAR(10)</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_date</span><span class="col-type">DATE</span></div>
+        <div class="col-row"><span></span><span class="col-name">raw_status</span><span class="col-type">VARCHAR(20)</span></div>
+        <div class="col-note">Provider's own vocabulary</div>
+        <div class="col-row"><span></span><span class="col-name">sched_departure_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">actual_departure_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">sched_arrival_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">actual_arrival_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">terminal</span><span class="col-type">VARCHAR?</span></div>
+        <div class="col-note">AeroTrack only</div>
+        <div class="col-row"><span></span><span class="col-name">gate</span><span class="col-type">VARCHAR?</span></div>
+        <div class="col-note">AeroTrack only</div>
+        <div class="col-row"><span></span><span class="col-name">delay_reason</span><span class="col-type">TEXT?</span></div>
+        <div class="col-note">AeroTrack only</div>
+        <div class="col-row"><span></span><span class="col-name">last_updated_utc</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span></span><span class="col-name">fetched_at</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span></span><span class="col-name">raw_payload</span><span class="col-type">JSONB</span></div>
+      </div>
+    </div>
+
+    <!-- ⑥ flight_statuses ──────────────────── -->
+    <div class="table-card t-statuses" id="t-statuses" style="left:340px; top:230px">
+      <div class="table-header"><span class="icon">✅</span> flight_statuses</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">status_id</span><span class="col-type">UUID</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_number</span><span class="col-type">VARCHAR(10)</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_date</span><span class="col-type">DATE</span></div>
+        <div class="col-row"><span></span><span class="col-name">unified_status</span><span class="col-type">ENUM</span></div>
+        <div class="col-note">OnTime | Delayed | Cancelled | Diverted | Unknown</div>
+        <div class="col-row"><span></span><span class="col-name">sched_departure_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">actual_departure_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">sched_arrival_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">actual_arrival_utc</span><span class="col-type">TIMESTAMP?</span></div>
+        <div class="col-row"><span></span><span class="col-name">terminal</span><span class="col-type">VARCHAR?</span></div>
+        <div class="col-row"><span></span><span class="col-name">gate</span><span class="col-type">VARCHAR?</span></div>
+        <div class="col-row"><span></span><span class="col-name">delay_reason</span><span class="col-type">TEXT?</span></div>
+        <div class="col-row"><span class="key-icon">🔗</span><span class="col-name fk">source_provider_id</span><span class="col-type">SMALLINT</span></div>
+        <div class="col-note">Provider with later lastUpdatedUtc</div>
+        <div class="col-row"><span></span><span class="col-name">last_updated_utc</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span></span><span class="col-name">message</span><span class="col-type">TEXT?</span></div>
+        <div class="col-note">Used when status = Unknown</div>
+        <div class="col-row"><span></span><span class="col-name">merged_at</span><span class="col-type">TIMESTAMP</span></div>
+      </div>
+    </div>
+
+    <!-- ⑦ status_lookup_log ────────────────── -->
+    <div class="table-card t-audit" id="t-audit" style="left:340px; top:760px">
+      <div class="table-header"><span class="icon">📋</span> status_lookup_log</div>
+      <div class="table-body">
+        <div class="col-row"><span class="key-icon">🔑</span><span class="col-name pk">log_id</span><span class="col-type">UUID</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_number</span><span class="col-type">VARCHAR(10)</span></div>
+        <div class="col-row"><span></span><span class="col-name">flight_date</span><span class="col-type">DATE</span></div>
+        <div class="col-row"><span></span><span class="col-name">requested_at</span><span class="col-type">TIMESTAMP</span></div>
+        <div class="col-row"><span></span><span class="col-name">unified_status</span><span class="col-type">ENUM?</span></div>
+        <div class="col-row"><span class="key-icon">🔗</span><span class="col-name fk">source_provider_id</span><span class="col-type">SMALLINT?</span></div>
+        <div class="col-row"><span></span><span class="col-name">aerotrack_responded</span><span class="col-type">BOOL</span></div>
+        <div class="col-row"><span></span><span class="col-name">quickflight_responded</span><span class="col-type">BOOL</span></div>
+        <div class="col-row"><span></span><span class="col-name">response_time_ms</span><span class="col-type">INT</span></div>
+      </div>
+    </div>
+
+  </div><!-- /erd -->
+
+  <!-- ── Notes ── -->
+  <div class="notes">
+    <div class="note-card">
+      <h3>📐 Merge Logic (DB level)</h3>
+      <ul>
+        <li>Both provider responses stored in <strong>provider_responses</strong></li>
+        <li>Merge rule: pick row with later <em>last_updated_utc</em></li>
+        <li>Merged result written to <strong>flight_statuses</strong></li>
+        <li>source_provider_id records which provider won the merge</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h3>📊 Status Normalisation</h3>
+      <ul>
+        <li>raw_status keeps provider's own vocabulary</li>
+        <li>unified_status is computed: compare actual vs scheduled times</li>
+        <li>≤ 15 min diff → OnTime; &gt; 15 min → Delayed</li>
+        <li>Provider-specific cancelled/diverted keywords → mapped enum</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h3>🔐 Indexes</h3>
+      <ul>
+        <li>flights: UNIQUE (flight_number)</li>
+        <li>provider_responses: (provider_id, flight_number, flight_date)</li>
+        <li>flight_statuses: UNIQUE (flight_number, flight_date)</li>
+        <li>status_lookup_log: (flight_number, flight_date, requested_at)</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h3>🏗 AeroTrack vs QuickFlight</h3>
+      <ul>
+        <li>AeroTrack → terminal, gate, delay_reason populated</li>
+        <li>QuickFlight → those fields are NULL in provider_responses</li>
+        <li>flight_statuses inherits NULLs if QuickFlight is preferred source</li>
+        <li>Frontend hides fields when NULL (AeroTrack Details card)</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // Draw SVG relationship lines between cards
+    const svg = document.getElementById('lines');
+    const erd = document.getElementById('erd');
+
+    function rect(id) {
+      const el = document.getElementById(id);
+      const er = erd.getBoundingClientRect();
+      const r  = el.getBoundingClientRect();
+      return {
+        x: r.left - er.left,
+        y: r.top  - er.top,
+        w: r.width,
+        h: r.height,
+        cx: r.left - er.left + r.width / 2,
+        cy: r.top  - er.top  + r.height / 2,
+      };
+    }
+
+    function line(x1, y1, x2, y2, color, dashed = false) {
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+      l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+      l.setAttribute('stroke', color);
+      l.setAttribute('stroke-width', '1.5');
+      if (dashed) l.setAttribute('stroke-dasharray', '5,3');
+      svg.appendChild(l);
+    }
+
+    function diamond(cx, cy, color) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const s = 5;
+      p.setAttribute('points', `${cx},${cy-s} ${cx+s},${cy} ${cx},${cy+s} ${cx-s},${cy}`);
+      p.setAttribute('fill', color);
+      svg.appendChild(p);
+    }
+
+    function circle(cx, cy, color) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', 4);
+      c.setAttribute('fill', 'none'); c.setAttribute('stroke', color);
+      c.setAttribute('stroke-width', '1.5');
+      svg.appendChild(c);
+    }
+
+    function connect(fromId, toId, color, dashed = false) {
+      const f = rect(fromId), t = rect(toId);
+      // right edge of f → left edge of t  (or best side)
+      const fx = f.x + f.w, fy = f.cy;
+      const tx = t.x,        ty = t.cy;
+      const mx = (fx + tx) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      if (dashed) path.setAttribute('stroke-dasharray', '5,3');
+      svg.appendChild(path);
+      circle(tx, ty, color);
+    }
+
+    function connectBottom(fromId, toId, color, dashed = false) {
+      const f = rect(fromId), t = rect(toId);
+      const fx = f.cx, fy = f.y + f.h;
+      const tx = t.cx, ty = t.y;
+      const my = (fy + ty) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${fx} ${fy} C ${fx} ${my}, ${tx} ${my}, ${tx} ${ty}`);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      if (dashed) path.setAttribute('stroke-dasharray', '5,3');
+      svg.appendChild(path);
+      circle(tx, ty, color);
+    }
+
+    function connectLeft(fromId, toId, color, dashed = false) {
+      const f = rect(fromId), t = rect(toId);
+      const fx = f.x, fy = f.cy;
+      const tx = t.x + t.w, ty = t.cy;
+      const mx = (fx + tx) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      if (dashed) path.setAttribute('stroke-dasharray', '5,3');
+      svg.appendChild(path);
+      circle(tx, ty, color);
+    }
+
+    window.addEventListener('load', () => {
+      // airports → flights (origin + destination)
+      connect('t-airports', 't-flights', '#a855f7');
+
+      // airlines → flights
+      connect('t-airlines', 't-flights', '#a855f7');
+
+      // flights → flight_statuses
+      connectBottom('t-flights', 't-statuses', '#3b82f6');
+
+      // providers → provider_responses
+      connectBottom('t-providers', 't-responses', '#06b6d4');
+
+      // providers → flight_statuses (source_provider_id)
+      connectLeft('t-statuses', 't-providers', '#06b6d4', true);
+
+      // flight_statuses → status_lookup_log
+      connectBottom('t-statuses', 't-audit', '#22c55e');
+
+      // providers → status_lookup_log
+      connectLeft('t-audit', 't-providers', '#ef4444', true);
+
+      // Set SVG height to match erd content
+      const erdH = erd.scrollHeight;
+      svg.style.height = erdH + 'px';
+      erd.style.minHeight = erdH + 'px';
+    });
+  </script>
+</body>
+</html>

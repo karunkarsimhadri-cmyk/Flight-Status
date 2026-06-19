@@ -1,0 +1,23 @@
+[
+  {
+    "ContainingType": "FlightStatus.Api.Controllers.FlightsController",
+    "Method": "GetStatus",
+    "RelativePath": "flights/status",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "flightNumber",
+        "Type": "System.String",
+        "IsRequired": false
+      },
+      {
+        "Name": "date",
+        "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  }
+]
